@@ -1,0 +1,205 @@
+{
+  "schedulerTabs": [
+    {
+      "id": "scheduler_calendar",
+      "label": "Scheduling Calendar",
+      "category": "scheduler",
+      "serviceLine": [
+        "outpatient",
+        "peer",
+        "waads",
+        "dahs"
+      ],
+      "frontendPath": "/app/scheduler",
+      "entity": "Appointment"
+    }
+  ],
+  "clientTabs": [
+    {
+      "id": "client_details",
+      "label": "Details",
+      "category": "client",
+      "serviceLine": [
+        "outpatient",
+        "peer",
+        "waads",
+        "dahs"
+      ],
+      "frontendPath": "/app/clients/{clientId}/details",
+      "entity": "Client"
+    },
+    {
+      "id": "client_billing_insurance",
+      "label": "Bill To & Insurance Info",
+      "category": "client",
+      "serviceLine": [
+        "outpatient",
+        "peer",
+        "waads",
+        "dahs"
+      ],
+      "frontendPath": "/app/clients/{clientId}/billing-insurance",
+      "entity": "Invoice+InsuranceInfo"
+    },
+    {
+      "id": "client_family_contacts",
+      "label": "Family Contact",
+      "category": "client",
+      "serviceLine": [
+        "outpatient",
+        "peer",
+        "waads",
+        "dahs"
+      ],
+      "frontendPath": "/app/clients/{clientId}/family-contacts",
+      "entity": "FamilyContact"
+    },
+    {
+      "id": "client_assign_staff",
+      "label": "Assign Staff",
+      "category": "client",
+      "serviceLine": [
+        "outpatient",
+        "peer",
+        "waads",
+        "dahs"
+      ],
+      "frontendPath": "/app/clients/{clientId}/staff",
+      "entity": "StaffAssignment"
+    },
+    {
+      "id": "client_documents_general",
+      "label": "General Documents",
+      "category": "client",
+      "serviceLine": [
+        "outpatient",
+        "peer",
+        "waads",
+        "dahs"
+      ],
+      "frontendPath": "/app/clients/{clientId}/documents/general",
+      "entity": "Document"
+    },
+    {
+      "id": "client_documents_clinical",
+      "label": "Clinical Documents",
+      "category": "client",
+      "serviceLine": [
+        "outpatient",
+        "peer",
+        "waads",
+        "dahs"
+      ],
+      "frontendPath": "/app/clients/{clientId}/documents/clinical",
+      "entity": "Document"
+    },
+    {
+      "id": "client_reminders",
+      "label": "Reminders Log",
+      "category": "client",
+      "serviceLine": [
+        "outpatient",
+        "peer",
+        "waads",
+        "dahs"
+      ],
+      "frontendPath": "/app/clients/{clientId}/reminders",
+      "entity": "ReminderLog"
+    },
+    {
+      "id": "client_initial_assessment",
+      "label": "Initial Assessment",
+      "category": "client",
+      "serviceLine": [
+        "outpatient",
+        "peer",
+        "waads",
+        "dahs"
+      ],
+      "frontendPath": "/app/clients/{clientId}/initial-assessment",
+      "entity": "InitialAssessment"
+    },
+    {
+      "id": "client_progress_notes",
+      "label": "Progress Notes (Wiley-style)",
+      "category": "client",
+      "serviceLine": [
+        "outpatient",
+        "peer",
+        "waads",
+        "dahs"
+      ],
+      "frontendPath": "/app/clients/{clientId}/notes",
+      "entity": "ProgressNote"
+    },
+    {
+      "id": "client_reports_forms",
+      "label": "Reports & Forms",
+      "category": "client",
+      "serviceLine": [
+        "outpatient",
+        "peer",
+        "waads",
+        "dahs"
+      ],
+      "frontendPath": "/app/clients/{clientId}/reports",
+      "entity": "Report"
+    }
+  ],
+  "clientPortalTabs": [
+    {
+      "id": "portal_intake",
+      "label": "Intake Form",
+      "category": "portal",
+      "serviceLine": [
+        "outpatient",
+        "peer",
+        "waads",
+        "dahs"
+      ],
+      "frontendPath": "/portal/intake",
+      "entity": "Client+IntakePDF"
+    },
+    {
+      "id": "portal_consents",
+      "label": "Consents",
+      "category": "portal",
+      "serviceLine": [
+        "outpatient",
+        "peer",
+        "waads",
+        "dahs"
+      ],
+      "frontendPath": "/portal/consents",
+      "entity": "ConsentPDF"
+    },
+    {
+      "id": "portal_appointments",
+      "label": "Appointments",
+      "category": "portal",
+      "serviceLine": [
+        "outpatient",
+        "peer",
+        "waads",
+        "dahs"
+      ],
+      "frontendPath": "/portal/appointments",
+      "entity": "Appointment"
+    }
+  ],
+  "adminTabs": [
+    {
+      "id": "admin_staff_preferences",
+      "label": "Staff Preferences",
+      "category": "admin",
+      "serviceLine": [
+        "outpatient",
+        "peer",
+        "waads",
+        "dahs"
+      ],
+      "frontendPath": "/app/admin/staff-preferences",
+      "entity": "StaffPreference"
+    }
+  ]
+}
