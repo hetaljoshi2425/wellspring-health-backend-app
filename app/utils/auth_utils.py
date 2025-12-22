@@ -3,9 +3,21 @@ from datetime import datetime, timedelta
 import os
 import jwt
 import secrets
-import bcrypt
+
+from fastapi.security import OAuth2PasswordBearer, HTTPBearer
+from fastapi import Depends, HTTPException, status
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
+from ..database import get_db
+from app import models
+
 
 # JWT 
+security = HTTPBearer()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
 ALGORITHM = os.getenv("ALGORITHM")
 SECRET_KEY = os.getenv("SECRET_KEY")
 ACCESS_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
@@ -34,3 +46,34 @@ def decode_token(token: str):
 def generate_reset_token():
     """ Generate reset password Token """
     return secrets.token_urlsafe(32)
+
+async def get_current_user(
+    credentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        token = credentials.credentials
+        payload = decode_token(token) 
+        user_id = payload.get("sub")
+        if not user_id:
+            raise credentials_exception
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise credentials_exception
+
+    result = await db.execute(
+        select(models.User).where(models.User.id == user_id)
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise credentials_exception
+
+    return user

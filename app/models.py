@@ -9,30 +9,48 @@ from sqlalchemy import (
     ForeignKey,
     Text,
     Float,
+    Enum,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
 from .database import Base
+import enum
+
+class RoleEnum(str, enum.Enum):
+    admin = "admin"
+    staff = "staff"
+    provider = "provider"
+
 
 class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
+    user_name = Column(String, nullable=False)
     full_name = Column(String, nullable=False)
-    role = Column(String, default="provider")  # provider, admin, billing, peer, waads, dahs
+    role = Column(Enum(RoleEnum, name="user_role_enum"), nullable=False, default=RoleEnum.provider)
     is_active = Column(Boolean, default=True)
     hashed_password = Column(String, nullable=False)
     reset_token = Column(String, nullable=True)
     reset_token_expires = Column(DateTime, nullable=True)
 
-
     appointments = relationship("Appointment", back_populates="provider")
     staff_preferences = relationship("StaffPreference", back_populates="user")
+
+class GenderEnum(str, enum.Enum):
+    male = "male"
+    female = "female"
+    other = "other"
 
 class Client(Base):
     __tablename__ = "clients"
 
+    __table_args__ = (
+        UniqueConstraint("email", name="uq_clients_email"),
+        UniqueConstraint("phone", name="uq_clients_phone"),
+    )
     id = Column(Integer, primary_key=True, index=True)
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
@@ -40,10 +58,11 @@ class Client(Base):
     email = Column(String, nullable=True)
     phone = Column(String, nullable=True)
     address = Column(String, nullable=True)
+    gender = Column(Enum(GenderEnum), nullable=True)
     emergency_contact_name = Column(String, nullable=True)
     emergency_contact_phone = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-
+    is_active = Column(Boolean, default=True, nullable=False)
     appointments = relationship("Appointment", back_populates="client")
     notes = relationship("ProgressNote", back_populates="client")
     treatment_plans = relationship("TreatmentPlan", back_populates="client")

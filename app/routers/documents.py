@@ -1,25 +1,178 @@
-from typing import List
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, HTTPException, status, UploadFile, File, Form
+from fastapi.responses import FileResponse
+
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
+
+import json, uuid
+from typing import List, Optional
+import os
 
 from ..database import get_db
 from .. import models
 from ..schemas import DocumentCreate, DocumentRead
-
+from app.utils.auth_utils import get_current_user
 router = APIRouter()
 
 @router.post("/", response_model=DocumentRead)
-async def create_document(doc_in: DocumentCreate, db: AsyncSession = Depends(get_db)):
-    doc = models.Document(**doc_in.model_dump())
-    db.add(doc)
-    await db.commit()
-    await db.refresh(doc)
-    return doc
+async def create_document(client_id: int = Form(...), document_type: str = Form(...), title: str = Form(...), file: UploadFile = File(...),  db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
+    try:
+        doc_in = DocumentCreate(
+            client_id=client_id,
+            document_type=document_type,
+            title=title,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid document data",
+        )
+
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File is required",
+        )
+
+    upload_dir = "uploads/documents"
+    os.makedirs(upload_dir, exist_ok=True)
+
+    file_path = f"{upload_dir}/{uuid.uuid4()}_{file.filename}"
+
+    try:
+        with open(file_path, "wb") as f:
+            f.write(await file.read())
+    except Exception as e:
+        print("File save failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save file",
+        )
+
+    try:
+        doc = models.Document(
+            **doc_in.model_dump(),
+            file_path=file_path,
+            uploaded_by_user_id=current_user.id
+        )
+
+        db.add(doc)
+        await db.commit()
+        await db.refresh(doc)
+
+        return DocumentRead(
+            id=doc.id,
+            client_id=doc.client_id,
+            document_type=doc.document_type,
+            title=doc.title,
+            file_path=doc.file_path,
+            uploaded_at=doc.uploaded_at,
+            uploaded_by_user=current_user.email,
+        )
+
+    except Exception as e:
+        await db.rollback()
+
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create document",
+        )
 
 @router.get("/client/{client_id}", response_model=List[DocumentRead])
-async def list_documents(client_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(models.Document).where(models.Document.client_id == client_id)
+async def list_documents(
+    client_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+    search: Optional[str] = Query(None, description="Search document by title"),
+):
+    query = (
+        select(
+            models.Document,
+            models.User.email.label("uploaded_by_user_email")
+        )
+        .outerjoin(
+            models.User,
+            models.User.id == models.Document.uploaded_by_user_id
+        )
+        .where(models.Document.client_id == client_id)
+        .order_by(models.Document.uploaded_at.desc())
     )
-    return result.scalars().all()
+
+    if search:
+        query = query.where(
+            func.lower(models.Document.title).ilike(f"%{search.lower()}%")
+        )
+
+    result = await db.execute(query)
+
+    return [
+        DocumentRead(
+            id=doc.id,
+            client_id=doc.client_id,
+            document_type=doc.document_type,
+            title=doc.title,
+            file_path=doc.file_path,
+            uploaded_at=doc.uploaded_at,
+            uploaded_by_user=email,
+        )
+        for doc, email in result.all()
+    ]
+
+
+@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document(
+    document_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    result = await db.execute(
+        select(models.Document).where(models.Document.id == document_id)
+    )
+    document = result.scalars().first()
+
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    # Delete existing files
+    if document.file_path and os.path.exists(document.file_path):
+        os.remove(document.file_path)
+
+    await db.delete(document)
+    await db.commit()
+    return {
+        "message": "Document deleted successfully",
+        "document_id": document_id
+    }
+    
+    
+@router.get("/download/{document_id}")
+async def download_document(
+    document_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    result = await db.execute(
+        select(models.Document).where(models.Document.id == document_id)
+    )
+    document = result.scalars().first()
+
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if not document.file_path or not os.path.exists(document.file_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document file not found",
+        )
+
+    return FileResponse(
+        path=document.file_path,
+        filename=document.title,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{document.title}"'
+        },
+    )

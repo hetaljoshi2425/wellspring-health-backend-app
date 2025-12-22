@@ -8,11 +8,12 @@ from sqlalchemy import select, and_
 from ..database import get_db
 from .. import models
 from ..schemas import AppointmentCreate, AppointmentRead
+from app.utils.auth_utils import get_current_user
 
 router = APIRouter()
 
 @router.post("/", response_model=AppointmentRead)
-async def create_appointment(appointment_in: AppointmentCreate, db: AsyncSession = Depends(get_db)):
+async def create_appointment(appointment_in: AppointmentCreate, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user),):
     # Basic validation: start < end
     if appointment_in.start_time >= appointment_in.end_time:
         raise HTTPException(status_code=400, detail="start_time must be before end_time")
@@ -23,7 +24,7 @@ async def create_appointment(appointment_in: AppointmentCreate, db: AsyncSession
     return appt
 
 @router.get("/", response_model=List[AppointmentRead])
-async def list_appointments(db: AsyncSession = Depends(get_db)):
+async def list_appointments(db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user),):
     result = await db.execute(select(models.Appointment))
     return result.scalars().all()
 
@@ -33,6 +34,7 @@ async def calendar_view(
     end: date = Query(..., description="End date (YYYY-MM-DD, inclusive)"),
     provider_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
 ) -> Dict[str, list]:
     start_dt = datetime.combine(start, datetime.min.time())
     end_dt = datetime.combine(end, datetime.max.time())

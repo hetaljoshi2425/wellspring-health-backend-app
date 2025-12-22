@@ -1,31 +1,183 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+from sqlalchemy import select, or_, func, and_
 
 from ..database import get_db
 from .. import models
-from ..schemas import ClientCreate, ClientRead
+from ..schemas import ClientCreate, ClientRead, ClientUpdate
+from app.utils.auth_utils import get_current_user 
 
 router = APIRouter()
 
 @router.post("/", response_model=ClientRead)
-async def create_client(client_in: ClientCreate, db: AsyncSession = Depends(get_db)):
+async def create_client(client_in: ClientCreate, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
+    if client_in.email or client_in.phone:
+        stmt = select(models.Client).where(
+            or_(
+                models.Client.email == client_in.email if client_in.email else False,
+                models.Client.phone == client_in.phone if client_in.phone else False,
+            )
+        )
+        result = await db.execute(stmt)
+        if result.scalars().first():
+            raise HTTPException(
+                status_code=400,
+                detail="Client with this email or phone already exists.",
+            )
     client = models.Client(**client_in.model_dump())
     db.add(client)
-    await db.commit()
-    await db.refresh(client)
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Duplicate email or phone number.",
+        )
     return client
 
 @router.get("/", response_model=List[ClientRead])
-async def list_clients(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(models.Client))
-    return result.scalars().all()
+async def list_clients(
+    search: Optional[str] = Query(None, description="Search by name or email"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    try:
+        offset = (page - 1) * page_size
+
+        query = select(models.Client)
+        if search:
+            search_term = f"%{search.lower()}%"
+
+            full_name = (
+                models.Client.first_name + " " + models.Client.last_name
+            )
+
+            query = query.where(
+                or_(
+                    func.lower(models.Client.first_name).ilike(search_term),
+                    func.lower(models.Client.last_name).ilike(search_term),
+                    func.lower(full_name).ilike(search_term),
+                    func.lower(models.Client.email).ilike(search_term),
+                )
+            )
+
+        # Latest client first
+        query = (
+            query.order_by(models.Client.created_at.desc())
+            .offset(offset)
+            .limit(page_size)
+        )
+
+        result = await db.execute(query)
+        clients = result.scalars().all()
+
+        return clients
+
+    except SQLAlchemyError as db_err:
+        print("Database error while listing clients")
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch clients from database",
+        )
+
+    except Exception as exc:
+        print("Unexpected error while listing clients")
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unexpected server error",
+        )
 
 @router.get("/{client_id}", response_model=ClientRead)
-async def get_client(client_id: int, db: AsyncSession = Depends(get_db)):
+async def get_client(client_id: int, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
     result = await db.execute(select(models.Client).where(models.Client.id == client_id))
     client = result.scalar_one_or_none()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     return client
+
+@router.patch("/{client_id}", response_model=ClientRead)
+async def update_client(
+    client_id: int,
+    client_in: ClientUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    # Fetch client
+    result = await db.execute(
+        select(models.Client).where(models.Client.id == client_id)
+    )
+    client = result.scalar_one_or_none()
+
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Client not found",
+        )
+
+    # Duplicate check (exclude current client)
+    if client_in.email or client_in.phone:
+        stmt = select(models.Client).where(
+            and_(
+                models.Client.id != client_id,  # 👈 exclude current client
+                or_(
+                    models.Client.email == client_in.email if client_in.email else False,
+                    models.Client.phone == client_in.phone if client_in.phone else False,
+                ),
+            )
+        )
+
+        result = await db.execute(stmt)
+        if result.scalars().first():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Client with this email or phone already exists.",
+            )
+
+    # Update only changed field
+    update_data = client_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(client, field, value)
+
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Duplicate email or phone number.",
+        )
+
+    await db.refresh(client)
+    return client
+
+
+@router.delete("/{client_id}", status_code=204)
+async def delete_client(
+    client_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    result = await db.execute(
+        select(models.Client).where(models.Client.id == client_id)
+    )
+    client = result.scalar_one_or_none()
+
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    await db.delete(client)
+    await db.commit()
+    
+    return {
+        "success": True,
+        "message": "Client deleted successfully",
+        "client_id": client_id,
+    }

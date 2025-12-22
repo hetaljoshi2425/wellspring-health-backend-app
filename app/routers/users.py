@@ -7,8 +7,10 @@ from app.schemas import *
 
 from app.utils.send_email import send_reset_email
 from app.utils.auth_utils import *
+from app.log_config import get_logger
 
-from fastapi import Depends, APIRouter, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import Depends, APIRouter, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -17,9 +19,45 @@ load_dotenv()
 
 router = APIRouter()
 
+logger = get_logger("users")
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
+
+@router.get("/users")
+async def list_users(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """
+    Fetch paginated list of users.
+    """
+    offset = (page - 1) * page_size
+    query = await db.execute(
+        select(User)
+        .offset(offset)
+        .limit(page_size)
+        .order_by(User.id.desc())
+    )
+    users = query.scalars().all()
+
+    return {
+        "success": True,
+        "message": "Users fetched successfully.",
+        "count": len(users),
+        "data": [
+            {
+                "id": user.id,
+                "email": user.email,
+                "user_name": user.user_name,
+                "role": user.role,
+                "created_at": user.created_at if hasattr(user, "created_at") else None
+            }
+            for user in users
+        ]
+    }
 
 @router.post("/users")
 async def create_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
@@ -46,6 +84,7 @@ async def create_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
     # create user 
     new_user = User(
         email=user.email,
+        user_name=user.user_name,
         full_name="",        
         role=user.role,
         hashed_password=hashed_password
@@ -76,12 +115,13 @@ async def login_user(data: LoginRequest, db: AsyncSession = Depends(get_db)):
             data(LoginRequest): The login payload containing email and password.
     """
     normalized_email = data.email.strip().lower()
-
+    logger.info(f"normalized email: {normalized_email}")
     # Check user by email
     query = await db.execute(select(User).where(User.email == normalized_email))
     user = query.scalar_one_or_none()
 
     if not user:
+        logger.error(f"User not found")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"error": "Invalid email or password"}
@@ -89,6 +129,7 @@ async def login_user(data: LoginRequest, db: AsyncSession = Depends(get_db)):
 
     # Verify password
     if not verify_password(data.password, user.hashed_password):
+        logger.error(f"Password varification failed")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"error": "Invalid email or password"}
@@ -108,6 +149,31 @@ async def login_user(data: LoginRequest, db: AsyncSession = Depends(get_db)):
             "email": user.email,
             "role": user.role
         }
+    }
+    
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="/user/login/swagger"
+)
+   
+@router.post("/login/swagger")
+async def swagger_login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(get_db),
+):
+    email = form_data.username.lower().strip()
+    password = form_data.password
+
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+
+    if not user or not verify_password(password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    token = create_access_token({"sub": str(user.id), "role": user.role})
+
+    return {
+        "access_token": token,
+        "token_type": "bearer"
     }
     
 
@@ -151,9 +217,11 @@ async def verify_reset_token(data: VerifyResetToken, db: AsyncSession = Depends(
 async def request_reset(data: RequestPasswordReset, db: AsyncSession = Depends(get_db)):
     """send reset password link email"""
     
+    logger.info(f"forgot password request: {data.email}")
     user = await db.execute(select(User).where(User.email == data.email))
     user_data = user.scalar_one_or_none()
     if not user_data:
+        logger.warning(f"Email not found: {data.email}")
         raise HTTPException(status_code=404, detail={"error": "Email not found"})
 
     token = generate_reset_token()
@@ -167,15 +235,18 @@ async def request_reset(data: RequestPasswordReset, db: AsyncSession = Depends(g
     reset_link = f"{FRONTEND_URL}?token={token}"
     try:
         email_sent = await send_reset_email(user_data.email, reset_link)
+        
         if not email_sent:
+            logger.error(f"error sending email.. email not sent:")
             return {"success": False, "message": "Failed to send reset email. Please try again later."}
     except Exception as e:
+        logger.error(f"Error sending email: {e}")
         print(f"Error sending email: {e}")
         raise HTTPException(
             status_code=500,
             detail={"success": False, "error": "Failed to send reset email. Please try again later."}
         )
-
+    logger.info(f"Reset link sent successfully to {data.email}")
     return {"message": "Password reset link sent to email"}
 
 
@@ -204,4 +275,51 @@ async def reset_password(data: ResetPassword, db: AsyncSession = Depends(get_db)
     return {
         "success": True,
         "message": "Password updated successfully"
+    }
+
+
+@router.post("/refresh", response_model=TokenRefreshResponse)
+async def refresh_access_token(
+    data: RefreshTokenRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        payload = decode_token(data.refresh_token)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+
+    user_id = payload.get("sub")
+
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        )
+
+    result = await db.execute(
+        select(User).where(User.id == int(user_id), User.is_active == True)
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+
+    new_access_token = create_access_token(
+        {"sub": str(user.id), "role": user.role}
+    )
+
+    new_refresh_token = create_refresh_token(
+        {"sub": str(user.id), "role": user.role}
+    )
+
+    return {
+        "access_token": new_access_token,
+        "refresh_token": new_refresh_token,
+        "token_type": "bearer",
     }

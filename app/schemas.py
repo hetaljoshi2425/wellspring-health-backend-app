@@ -3,17 +3,28 @@ from typing import Optional, List
 from pydantic import BaseModel, EmailStr, validator, Field
 import re
 from fastapi import HTTPException
+from enum import Enum
 
 ALLOWED_ROLES = {"provider", "admin", "billing", "peer", "waads", "dahs"}
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+class TokenRefreshResponse(BaseModel):
+    access_token: str
+    refresh_token: str
 
 class UserBase(BaseModel):
     email: EmailStr
     full_name: str
+    user_name: str
     role: str = "provider"
     is_active: bool = True
 
 class UserCreate(BaseModel):
     email: EmailStr
+    user_name: str
     password: str
     role: str
 
@@ -110,6 +121,17 @@ class UserRead(UserBase):
     id: int
     class Config:
         from_attributes = True
+        
+class UserByEmailRead(BaseModel):
+    email: str
+
+    class Config:
+        from_attributes = True
+
+class GenderEnum(str, Enum):
+    male = "male"
+    female = "female"
+    other = "other"
 
 class ClientBase(BaseModel):
     first_name: str
@@ -120,6 +142,8 @@ class ClientBase(BaseModel):
     address: Optional[str] = None
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
+    gender: Optional[GenderEnum] = None
+    is_active: bool = True
 
 class ClientCreate(ClientBase):
     pass
@@ -129,6 +153,18 @@ class ClientRead(ClientBase):
     created_at: datetime
     class Config:
         from_attributes = True
+        
+class ClientUpdate(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    date_of_birth: Optional[date] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    gender: Optional[GenderEnum] = None
+    is_active: bool = True
 
 class AppointmentBase(BaseModel):
     client_id: int
@@ -285,13 +321,20 @@ class InsuranceInfoRead(InsuranceInfoBase):
 class FamilyContactBase(BaseModel):
     client_id: int
     name: str
-    relationship: Optional[str] = None
+    relationships: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[EmailStr] = None
     notes: Optional[str] = None
 
 class FamilyContactCreate(FamilyContactBase):
     pass
+
+class FamilyContactUpdate(BaseModel):
+    name: Optional[str] = None
+    relationships: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[EmailStr] = None
+    notes: Optional[str] = None
 
 class FamilyContactRead(FamilyContactBase):
     id: int
@@ -320,14 +363,17 @@ class DocumentBase(BaseModel):
     document_type: str
     title: str
     file_path: Optional[str] = None
+    
 
-class DocumentCreate(DocumentBase):
-    pass
+class DocumentCreate(BaseModel):
+    client_id: int
+    document_type: str
+    title: str
 
 class DocumentRead(DocumentBase):
     id: int
     uploaded_at: datetime
-    uploaded_by_user_id: Optional[int] = None
+    uploaded_by_user:  Optional[str] = None
     class Config:
         from_attributes = True
 
@@ -346,6 +392,12 @@ class ReminderLogRead(ReminderLogBase):
     completed_at: Optional[datetime] = None
     class Config:
         from_attributes = True
+
+class ReminderLogUpdate(BaseModel):
+    reminder_type: Optional[str] = None
+    reminder_text: Optional[str] = None
+    due_date: Optional[datetime] = None
+    completed: Optional[bool] = None
 
 class InitialAssessmentBase(BaseModel):
     client_id: int

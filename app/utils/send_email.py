@@ -2,9 +2,12 @@ import aiosmtplib
 from email.message import EmailMessage
 from email.mime.image import MIMEImage
 import os
-
+from logging.handlers import RotatingFileHandler
+from app.log_config import get_logger
 from dotenv import load_dotenv
 load_dotenv()
+
+logger = get_logger("forgot_password")
 
 # SMTP Send Email Creds
 SMTP_HOST = os.getenv("SMTP_HOST")
@@ -23,6 +26,7 @@ async def send_reset_email(to_email: str, reset_link: str):
         html_content = file.read()
 
     # Replace placeholders in HTML
+    logger.info(f"Email template read...")
     html_content = html_content.replace("{{RESET_LINK}}", reset_link)
 
     # Create email
@@ -32,7 +36,7 @@ async def send_reset_email(to_email: str, reset_link: str):
     message["Subject"] = "Reset Your Password"
     message.set_content("HTML email not supported.")
     message.add_alternative(html_content, subtype="html")
-    
+    logger.info(f"Email messge body ready...")
     logo_file = "app/static/logo.png"
     # Attach the logo image inline
     # with open(logo_file, 'rb') as f:
@@ -51,9 +55,11 @@ async def send_reset_email(to_email: str, reset_link: str):
             username=SMTP_USER,
             password=SMTP_PASSWORD,
         )
+        logger.info(f"Email sent successfully to {to_email}")
         print(f"Email sent successfully to {to_email}")
         return True
     except Exception as e:
+        logger.error(f"Error sending email: {e}")
         print("Email sending failed:", e)
         return False
     
