@@ -31,7 +31,7 @@ async def send_reset_email(to_email: str, reset_link: str):
 
     # Create email
     message = EmailMessage()
-    message["From"] = "Wellspring Support {FROM_EMAIL}"
+    message["From"] = f"Wellspring Support {FROM_EMAIL}"
     message["To"] = to_email
     message["Subject"] = "Reset Your Password"
     message.set_content("HTML email not supported.")
