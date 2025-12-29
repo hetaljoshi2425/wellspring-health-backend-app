@@ -2,6 +2,7 @@ from datetime import datetime, date
 from typing import List, Optional, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, or_
 from sqlalchemy.orm import selectinload
