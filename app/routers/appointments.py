@@ -12,26 +12,44 @@ from .. import models
 from ..schemas import AppointmentCreate, AppointmentRead, AppointmentUpdate
 from app.utils.auth_utils import get_current_user
 from app.validators.appointment import *
+from app.log_config import get_logger
+
 router = APIRouter()
+
+logger = get_logger("appointment")
 
 @router.post("/", response_model=AppointmentRead)
 async def create_appointment(appointment_in: AppointmentCreate, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user),):
     # Basic validation: start < end
-    if appointment_in.start_time >= appointment_in.end_time:
-        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"success":False, "message": "start_time must be before end_time"})
-    
-    await validate_client_provider(
-        db,
-        client_id=appointment_in.client_id,
-        provider_id=appointment_in.provider_id,
-    )
-    
-    appt = models.Appointment(**appointment_in.model_dump())
-    db.add(appt)
+    try:
+        if appointment_in.start_time >= appointment_in.end_time:
+            logger.warning(f"appointment start_time must be before end_time")
+            return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"success":False, "message": "start_time must be before end_time"})
         
-    await db.commit()
-    await db.refresh(appt)
-    return appt
+        data = await validate_client_provider(
+            db,
+            client_id=appointment_in.client_id,
+            provider_id=appointment_in.provider_id,
+        )
+        logger.info(f"Appointment created successfully | id={appt.id}")
+        
+        appt = models.Appointment(**appointment_in.model_dump())
+        db.add(appt)
+            
+        await db.commit()
+        await db.refresh(appt)
+        logger.info(f"Appointment added to database")
+        return appt
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Unexpected error occurred {str(e)}.")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "success": False,
+                "message": f"Unexpected error occurred {str(e)}.",
+            },
+        )
 
 
 @router.get("/", response_model=List[AppointmentRead])
