@@ -31,7 +31,6 @@ async def create_appointment(appointment_in: AppointmentCreate, db: AsyncSession
             client_id=appointment_in.client_id,
             provider_id=appointment_in.provider_id,
         )
-        logger.info(f"Appointment created successfully | id={appt.id}")
         
         appt = models.Appointment(**appointment_in.model_dump())
         db.add(appt)
