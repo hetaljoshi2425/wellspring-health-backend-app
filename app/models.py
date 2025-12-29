@@ -22,6 +22,10 @@ class RoleEnum(str, enum.Enum):
     staff = "staff"
     provider = "provider"
 
+class GenderEnum(str, enum.Enum):
+    male = "male"
+    female = "female"
+    other = "other"
 
 class User(Base):
     __tablename__ = "users"
@@ -32,17 +36,14 @@ class User(Base):
     full_name = Column(String, nullable=False)
     role = Column(Enum(RoleEnum, name="user_role_enum"), nullable=False, default=RoleEnum.provider)
     is_active = Column(Boolean, default=True)
+    gender = Column(Enum(GenderEnum), nullable=True)
     hashed_password = Column(String, nullable=False)
     reset_token = Column(String, nullable=True)
     reset_token_expires = Column(DateTime, nullable=True)
 
     appointments = relationship("Appointment", back_populates="provider")
     staff_preferences = relationship("StaffPreference", back_populates="user")
-
-class GenderEnum(str, enum.Enum):
-    male = "male"
-    female = "female"
-    other = "other"
+    notes = relationship("ProgressNote", back_populates="provider")
 
 class Client(Base):
     __tablename__ = "clients"
@@ -70,7 +71,7 @@ class Client(Base):
     insurance_info = relationship("InsuranceInfo", back_populates="client", uselist=False)
     family_contacts = relationship("FamilyContact", back_populates="client")
     staff_assignments = relationship("StaffAssignment", back_populates="client")
-    documents = relationship("Document", back_populates="client")
+    documents = relationship("Document", back_populates="client", cascade="all, delete-orphan", passive_deletes=True)
     reminders = relationship("ReminderLog", back_populates="client")
     assessments = relationship("InitialAssessment", back_populates="client")
 
@@ -86,8 +87,9 @@ class Appointment(Base):
     status = Column(String, default="scheduled")  # scheduled, completed, canceled, no_show
     location = Column(String, nullable=True)
 
-    client = relationship("Client", back_populates="appointments")
-    provider = relationship("User", back_populates="appointments")
+    client = relationship("Client", back_populates="appointments", lazy="selectin",)
+    provider = relationship("User", back_populates="appointments", lazy="selectin",)
+    notes = relationship("ProgressNote", back_populates="appointment", lazy="selectin", cascade="all, delete-orphan",)
 
 class ProgressNote(Base):
     __tablename__ = "progress_notes"
@@ -103,6 +105,8 @@ class ProgressNote(Base):
     service_line = Column(String, nullable=True)  # outpatient, peer, waads, dahs, etc.
 
     client = relationship("Client", back_populates="notes")
+    provider = relationship("User", back_populates="notes")
+    appointment = relationship("Appointment", back_populates="notes")
 
 class TreatmentPlan(Base):
     __tablename__ = "treatment_plans"
@@ -245,7 +249,7 @@ class Document(Base):
     __tablename__ = "documents"
 
     id = Column(Integer, primary_key=True, index=True)
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
     document_type = Column(String, nullable=False)  # general, clinical
     title = Column(String, nullable=False)
     file_path = Column(String, nullable=True)

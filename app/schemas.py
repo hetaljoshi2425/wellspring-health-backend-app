@@ -4,8 +4,9 @@ from pydantic import BaseModel, EmailStr, validator, Field
 import re
 from fastapi import HTTPException
 from enum import Enum
+from app.models import *
 
-ALLOWED_ROLES = {"provider", "admin", "billing", "peer", "waads", "dahs"}
+ALLOWED_ROLES = {"provider", "admin", "staff"}
 
 
 class RefreshTokenRequest(BaseModel):
@@ -27,6 +28,7 @@ class UserCreate(BaseModel):
     user_name: str
     password: str
     role: str
+    gender: Optional[GenderEnum] = None
 
     @validator("password")
     def validate_password(cls, value):
@@ -128,10 +130,15 @@ class UserByEmailRead(BaseModel):
     class Config:
         from_attributes = True
 
-class GenderEnum(str, Enum):
-    male = "male"
-    female = "female"
-    other = "other"
+class ProviderRead(BaseModel):
+    id: int
+    email: str
+    user_name: str
+    role: RoleEnum
+    is_active: bool
+
+    class Config:
+        from_attributes = True
 
 class ClientBase(BaseModel):
     first_name: str
@@ -178,11 +185,25 @@ class AppointmentBase(BaseModel):
 class AppointmentCreate(AppointmentBase):
     pass
 
+class AppointmentUpdate(BaseModel):
+    client_id: Optional[int] = None
+    provider_id: Optional[int] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    type: Optional[str] = None
+    status: Optional[str] = None
+    location: Optional[str] = None
+
 class AppointmentRead(AppointmentBase):
     id: int
+    
+    client: ClientRead
+    provider: ProviderRead
+    
     class Config:
         from_attributes = True
 
+        
 class ProgressNoteBase(BaseModel):
     client_id: int
     provider_id: int
@@ -198,8 +219,18 @@ class ProgressNoteCreate(ProgressNoteBase):
 class ProgressNoteRead(ProgressNoteBase):
     id: int
     created_at: datetime
+    
+    appointment: Optional[AppointmentRead]
+    
     class Config:
         from_attributes = True
+        
+class ProgressNoteUpdate(BaseModel):
+    appointment_id: Optional[int] = None
+    note_text: Optional[str] = None
+    dsm5_code: Optional[str] = None
+    modifiers: Optional[str] = None
+    service_line: Optional[str] = None
 
 class InvoiceBase(BaseModel):
     client_id: int

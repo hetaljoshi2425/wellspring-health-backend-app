@@ -24,7 +24,8 @@ from .routers import (
     portal,
     reports,
     ui_spec,
-    users
+    users,
+    dashabord
 )
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -55,6 +56,7 @@ async def read_root(request: Request):
 
 # Routers
 app.include_router(users.router, prefix="/user", tags=["user"])
+app.include_router(dashabord.router, prefix="/dashabord", tags=["dashabord"])
 app.include_router(clients.router, prefix="/clients", tags=["clients"])
 app.include_router(appointments.router, prefix="/appointments", tags=["appointments"])
 app.include_router(notes.router, prefix="/notes", tags=["notes"])

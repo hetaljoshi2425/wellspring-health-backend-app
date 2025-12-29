@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, status, UploadFile, File, Form
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -23,16 +23,10 @@ async def create_document(client_id: int = Form(...), document_type: str = Form(
             title=title,
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid document data",
-        )
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"success": False,"message": "Invalid document data"})
 
     if not file.filename:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File is required",
-        )
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"success": False,"message": "File is required"})
 
     upload_dir = "uploads/documents"
     os.makedirs(upload_dir, exist_ok=True)
@@ -44,10 +38,7 @@ async def create_document(client_id: int = Form(...), document_type: str = Form(
             f.write(await file.read())
     except Exception as e:
         print("File save failed")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to save file",
-        )
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"success": False, "message": "Failed to save file"})
 
     try:
         doc = models.Document(
@@ -67,7 +58,7 @@ async def create_document(client_id: int = Form(...), document_type: str = Form(
             title=doc.title,
             file_path=doc.file_path,
             uploaded_at=doc.uploaded_at,
-            uploaded_by_user=current_user.email,
+            uploaded_by_user=current_user.user_name,
         )
 
     except Exception as e:
@@ -76,10 +67,7 @@ async def create_document(client_id: int = Form(...), document_type: str = Form(
         if os.path.exists(file_path):
             os.remove(file_path)
 
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create document",
-        )
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"success": False, "message": "Failed to create document"})
 
 @router.get("/client/{client_id}", response_model=List[DocumentRead])
 async def list_documents(
@@ -91,7 +79,7 @@ async def list_documents(
     query = (
         select(
             models.Document,
-            models.User.email.label("uploaded_by_user_email")
+            models.User.user_name.label("uploaded_by_user_user_name")
         )
         .outerjoin(
             models.User,
@@ -116,9 +104,9 @@ async def list_documents(
             title=doc.title,
             file_path=doc.file_path,
             uploaded_at=doc.uploaded_at,
-            uploaded_by_user=email,
+            uploaded_by_user=user_name,
         )
-        for doc, email in result.all()
+        for doc, user_name in result.all()
     ]
 
 
@@ -134,7 +122,7 @@ async def delete_document(
     document = result.scalars().first()
 
     if not document:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"success": False, "message": "Document not found"})
 
     # Delete existing files
     if document.file_path and os.path.exists(document.file_path):
@@ -143,6 +131,7 @@ async def delete_document(
     await db.delete(document)
     await db.commit()
     return {
+        "success": True,
         "message": "Document deleted successfully",
         "document_id": document_id
     }
@@ -160,13 +149,10 @@ async def download_document(
     document = result.scalars().first()
 
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"success": False, "message": "Document not found"})
 
     if not document.file_path or not os.path.exists(document.file_path):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document file not found",
-        )
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"success": False, "message": "Document file not found"})
 
     return FileResponse(
         path=document.file_path,
