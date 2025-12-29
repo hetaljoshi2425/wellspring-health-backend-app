@@ -18,11 +18,24 @@ router = APIRouter()
 
 logger = get_logger("appointment")
 
+def to_naive(dt: datetime) -> datetime:
+    if dt.tzinfo:
+        return dt.replace(tzinfo=None)
+    return dt
+
 @router.post("/", response_model=AppointmentRead)
 async def create_appointment(appointment_in: AppointmentCreate, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user),):
     # Basic validation: start < end
     try:
-        if appointment_in.start_time >= appointment_in.end_time:
+        start_time = appointment_in.start_time
+        end_time = appointment_in.end_time
+        if start_time.tzinfo is None:
+            start_time = start_time.replace(tzinfo=timezone.utc)
+
+        if end_time.tzinfo is None:
+            end_time = end_time.replace(tzinfo=timezone.utc)
+            
+        if start_time >= end_time:
             logger.warning(f"appointment start_time must be before end_time")
             return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"success":False, "message": "start_time must be before end_time"})
         
@@ -32,7 +45,11 @@ async def create_appointment(appointment_in: AppointmentCreate, db: AsyncSession
             provider_id=appointment_in.provider_id,
         )
         
-        appt = models.Appointment(**appointment_in.model_dump())
+        appt = models.Appointment(
+            **appointment_in.model_dump(exclude={"start_time", "end_time"}),
+            start_time=start_time,
+            end_time=end_time,
+        )
         db.add(appt)
             
         await db.commit()

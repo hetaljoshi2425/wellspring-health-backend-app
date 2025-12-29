@@ -81,8 +81,8 @@ class Appointment(Base):
     id = Column(Integer, primary_key=True, index=True)
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
     provider_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    start_time = Column(DateTime, nullable=False)
-    end_time = Column(DateTime, nullable=False)
+    start_time = Column(DateTime(timezone=True), nullable=False)
+    end_time = Column(DateTime(timezone=True), nullable=False)
     type = Column(String, default="individual")  # individual, group, telehealth, waads, dahs, peer
     status = Column(String, default="scheduled")  # scheduled, completed, canceled, no_show
     location = Column(String, nullable=True)
