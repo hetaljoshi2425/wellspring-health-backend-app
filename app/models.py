@@ -41,9 +41,10 @@ class User(Base):
     reset_token = Column(String, nullable=True)
     reset_token_expires = Column(DateTime, nullable=True)
 
-    appointments = relationship("Appointment", back_populates="provider")
-    staff_preferences = relationship("StaffPreference", back_populates="user")
-    notes = relationship("ProgressNote", back_populates="provider")
+    appointments = relationship("Appointment", back_populates="provider", cascade="all, delete-orphan")
+    staff_preferences = relationship("StaffPreference", back_populates="user", cascade="all, delete-orphan")
+    notes = relationship("ProgressNote", back_populates="provider", cascade="all, delete-orphan")
+    staff_assignments = relationship("StaffAssignment", back_populates="staff_user", cascade="all, delete-orphan")
 
 class Client(Base):
     __tablename__ = "clients"
@@ -244,7 +245,8 @@ class StaffAssignment(Base):
     notes = Column(Text, nullable=True)
 
     client = relationship("Client", back_populates="staff_assignments")
-
+    staff_user = relationship("User", back_populates="staff_assignments")
+    
 class Document(Base):
     __tablename__ = "documents"
 
@@ -262,6 +264,7 @@ class ReminderLog(Base):
     __tablename__ = "reminder_logs"
 
     id = Column(Integer, primary_key=True, index=True)
+    reminder_title = Column(String, nullable=True)
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
     reminder_type = Column(String, nullable=True)
     reminder_text = Column(Text, nullable=False)

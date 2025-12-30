@@ -9,11 +9,12 @@ from sqlalchemy.orm import selectinload
 from ..database import get_db
 from .. import models
 from ..schemas import ProgressNoteCreate, ProgressNoteRead, ProgressNoteUpdate
+from app.utils.auth_utils import get_current_user 
 
 router = APIRouter()
 
 @router.post("/", response_model=ProgressNoteRead)
-async def create_note(note_in: ProgressNoteCreate, db: AsyncSession = Depends(get_db)):
+async def create_note(note_in: ProgressNoteCreate, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
 
     client = await db.get(models.Client, note_in.client_id)
     if not client:
@@ -52,7 +53,7 @@ async def create_note(note_in: ProgressNoteCreate, db: AsyncSession = Depends(ge
     return note
 
 @router.get("/client/{client_id}", response_model=List[ProgressNoteRead])
-async def list_notes_for_client(client_id: int, page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=100), db: AsyncSession = Depends(get_db)):
+async def list_notes_for_client(client_id: int, page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=100), db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
     client = await db.get(models.Client, client_id)
     if not client:
         return JSONResponse(status_code=404, content={ "success": False, "message": "Client not found",},)
@@ -77,6 +78,7 @@ async def update_note(
     note_id: int,
     note_in: ProgressNoteUpdate,
     db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
 ):
     stmt = (
         select(models.ProgressNote)
@@ -106,6 +108,7 @@ async def update_note(
 async def delete_note(
     note_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
 ):
     result = await db.execute(
         select(models.ProgressNote).where(models.ProgressNote.id == note_id)

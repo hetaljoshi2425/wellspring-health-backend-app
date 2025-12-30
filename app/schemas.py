@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from typing import Optional, List
-from pydantic import BaseModel, EmailStr, validator, Field
+from pydantic import BaseModel, EmailStr, validator, Field, field_validator
 import re
 from fastapi import HTTPException
 from enum import Enum
@@ -380,12 +380,39 @@ class StaffAssignmentBase(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     notes: Optional[str] = None
+    
+class StaffAssignmentCreate(StaffAssignmentBase):
+
+    @field_validator("end_date")
+    @classmethod
+    def validate_dates(cls, end_date, info):
+        start_date = info.data.get("start_date")
+        if start_date and end_date and end_date < start_date:
+            raise ValueError("end_date cannot be before start_date")
+        return end_date
+
+    @field_validator("start_date")
+    @classmethod
+    def validate_start_date(cls, start_date):
+        if start_date and start_date < date.today():
+            raise ValueError("start_date cannot be in the past")
+        return start_date
 
 class StaffAssignmentCreate(StaffAssignmentBase):
     pass
 
-class StaffAssignmentRead(StaffAssignmentBase):
+class StaffAssignmentRead(BaseModel):
     id: int
+    client_id: int
+    staff_user_id: int
+    role: str | None
+    is_primary: bool
+    start_date: date | None
+    end_date: date | None
+    notes: str | None
+
+    client: "ClientRead"
+    staff_user: "UserRead"
     class Config:
         from_attributes = True
 
@@ -410,6 +437,7 @@ class DocumentRead(DocumentBase):
 
 class ReminderLogBase(BaseModel):
     client_id: int
+    reminder_title: str
     reminder_type: Optional[str] = None
     reminder_text: str
     due_date: Optional[datetime] = None
@@ -421,6 +449,7 @@ class ReminderLogCreate(ReminderLogBase):
 class ReminderLogRead(ReminderLogBase):
     id: int
     completed_at: Optional[datetime] = None
+    client: ClientRead
     class Config:
         from_attributes = True
 

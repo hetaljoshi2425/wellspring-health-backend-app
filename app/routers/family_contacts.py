@@ -20,7 +20,7 @@ async def create_family_contact(contact_in: FamilyContactCreate, db: AsyncSessio
     return contact
 
 @router.get("/client/{client_id}", response_model=List[FamilyContactRead])
-async def list_family_contacts(client_id: int, db: AsyncSession = Depends(get_db)):
+async def list_family_contacts(client_id: int, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
     result = await db.execute(
         select(models.FamilyContact).where(models.FamilyContact.client_id == client_id)
     )
