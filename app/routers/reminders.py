@@ -22,7 +22,11 @@ async def create_reminder(rem_in: ReminderLogCreate, db: AsyncSession = Depends(
     if not client:
         return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={ "success": False, "message": "Client not found"})
     try:
-        rem = models.ReminderLog(**rem_in.model_dump())
+        data = rem_in.model_dump()
+        if data.get("due_date") and data["due_date"].tzinfo is not None:
+            data["due_date"] = data["due_date"].replace(tzinfo=None)
+            
+        rem = models.ReminderLog(**data)
         db.add(rem)
         await db.commit()
         await db.refresh(rem)
@@ -63,8 +67,11 @@ async def update_reminder(
 
     try:
         data = rem_in.model_dump(exclude_unset=True)
+        if data.get("due_date") and data["due_date"].tzinfo is not None:
+            data["due_date"] = data["due_date"].replace(tzinfo=None)
+            
         if "completed" in data:
-            rem.completed_at = datetime.datetime.utcnow() if data["completed"] else None
+            rem.completed_at = datetime.datetime.now() if data["completed"] else None
 
         for k, v in data.items():
             setattr(rem, k, v)
