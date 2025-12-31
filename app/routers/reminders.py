@@ -23,8 +23,16 @@ async def create_reminder(rem_in: ReminderLogCreate, db: AsyncSession = Depends(
         return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={ "success": False, "message": "Client not found"})
     try:
         data = rem_in.model_dump()
-        if data.get("due_date") and data["due_date"].tzinfo is not None:
-            data["due_date"] = data["due_date"].replace(tzinfo=None)
+        due_date = data.get("due_date")
+        
+        if due_date:
+            if due_date.tzinfo is not None:
+                due_date = due_date.replace(tzinfo=None)
+
+            if due_date < datetime.datetime.now():
+                return JSONResponse( status_code=status.HTTP_400_BAD_REQUEST, content={ "success": False, "message": "due_date cannot be in the past"})
+
+            data["due_date"] = due_date
             
         rem = models.ReminderLog(**data)
         db.add(rem)
@@ -67,8 +75,16 @@ async def update_reminder(
 
     try:
         data = rem_in.model_dump(exclude_unset=True)
-        if data.get("due_date") and data["due_date"].tzinfo is not None:
-            data["due_date"] = data["due_date"].replace(tzinfo=None)
+        if "due_date" in data and data["due_date"] is not None:
+            due_date = data["due_date"]
+
+            if due_date.tzinfo is not None:
+                due_date = due_date.replace(tzinfo=None)
+
+            if due_date < datetime.datetime.now():
+                return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"success": False, "message": "due_date cannot be in the past"})
+
+            data["due_date"] = due_date
             
         if "completed" in data:
             rem.completed_at = datetime.datetime.now() if data["completed"] else None
@@ -96,6 +112,7 @@ async def delete_reminder(
     rem = result.scalar_one_or_none()
     if not rem:
         return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"success": False, "message":"Reminder not found"})
+    
     try:
         await db.delete(rem)
         await db.commit()

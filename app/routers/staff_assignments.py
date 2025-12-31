@@ -25,9 +25,6 @@ async def assign_staff(assignment_in: StaffAssignmentCreate, db: AsyncSession = 
     if not staff:
         return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"success": False, "message": "Staff user not found"})
     
-    if staff.role !=  assignment_in.role:
-        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"success": False, "message": "Invalid Staff user role."})
-   
 
     existing = await db.execute(
         select(models.StaffAssignment).where(

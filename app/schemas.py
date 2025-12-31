@@ -437,7 +437,7 @@ class DocumentRead(DocumentBase):
 
 class ReminderLogBase(BaseModel):
     client_id: int
-    reminder_title: str
+    reminder_title: Optional[str] = None
     reminder_type: Optional[str] = None
     reminder_text: str
     due_date: Optional[datetime] = None
