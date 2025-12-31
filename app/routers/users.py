@@ -354,3 +354,44 @@ async def refresh_access_token(
         "refresh_token": new_refresh_token,
         "token_type": "bearer",
     }
+    
+    
+@router.post("/change-password")
+async def change_password(
+    payload: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    try:
+        if not verify_password(payload.current_password, current_user.hashed_password):
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "message": "Current password is incorrect"}
+            )
+
+        if payload.new_password != payload.confirm_password:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "message": "New password and confirm password do not match"}
+            )
+
+        if verify_password(payload.new_password, current_user.hashed_password):
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "message": "New password must be different from current password"}
+            )
+
+        current_user.hashed_password = hash_password(payload.new_password)
+        await db.commit()
+
+        return {
+            "success": True,
+            "message": "Password changed successfully"
+        }
+
+    except Exception as e:
+        await db.rollback()
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": f"Something went wrong {str(e)}"}
+        )

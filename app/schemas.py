@@ -489,3 +489,48 @@ class StaffPreferenceRead(StaffPreferenceBase):
     id: int
     class Config:
         from_attributes = True
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=6)
+    new_password: str = Field(..., min_length=6)
+    confirm_password: str = Field(..., min_length=6)
+    
+    @validator("new_password")
+    def validate_new_password(cls, value):
+        """
+        Password must contain:
+        - Minimum 8 characters
+        - At least one uppercase
+        - At least one lowercase
+        - At least one digit
+        - At least one special character
+        """
+
+        if len(value) < 8:
+            raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
+
+        if not re.search(r"[A-Z]", value):
+            raise HTTPException(status_code=400, detail="Password must contain at least one uppercase letter.")
+
+        if not re.search(r"[a-z]", value):
+            raise HTTPException(status_code=400, detail="Password must contain at least one lowercase letter.")
+
+        if not re.search(r"[0-9]", value):
+            raise HTTPException(status_code=400, detail="Password must contain at least one digit.")
+
+        if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", value):
+            raise HTTPException(status_code=400, detail="Password must contain at least one special character.")
+
+        return value
+
+    @validator("confirm_password")
+    def passwords_match(cls, confirm_password, values):
+        """
+        Confirm password must match new_password
+        """
+        new_password = values.get("new_password")
+
+        if new_password and confirm_password != new_password:
+            raise HTTPException(status_code=400, detail="New password and confirm password do not match.")
+
+        return confirm_password
