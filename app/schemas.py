@@ -22,6 +22,17 @@ class UserBase(BaseModel):
     user_name: str
     role: str = "provider"
     is_active: bool = True
+    
+class UserUpdateSchema(BaseModel):
+    email: Optional[EmailStr] = None
+    user_name: Optional[str] = None
+    full_name: Optional[str] = None
+    role: Optional[RoleEnum] = None
+    gender: Optional[GenderEnum] = None
+    is_active: Optional[bool] = None
+
+    class Config:
+        from_attributes = True
 
 class UserCreate(BaseModel):
     email: EmailStr
@@ -160,7 +171,7 @@ class ClientRead(ClientBase):
     created_at: datetime
     class Config:
         from_attributes = True
-        
+ 
 class ClientUpdate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
@@ -172,7 +183,28 @@ class ClientUpdate(BaseModel):
     emergency_contact_phone: Optional[str] = None
     gender: Optional[GenderEnum] = None
     is_active: bool = True
+    
+        
+class ProgressNoteBase(BaseModel):
+    client_id: int
+    provider_id: int
+    appointment_id: Optional[int] = None
+    note_text: str
+    dsm5_code: Optional[str] = None
+    modifiers: Optional[str] = None
+    service_line: Optional[str] = None
 
+class ProgressNoteCreate(ProgressNoteBase):
+    pass
+
+
+class ReadProgressNotes(ProgressNoteBase):
+    id: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+        
 class AppointmentBase(BaseModel):
     client_id: int
     provider_id: int
@@ -199,22 +231,11 @@ class AppointmentRead(AppointmentBase):
     
     client: ClientRead
     provider: ProviderRead
+    notes: list[ReadProgressNotes] | None = None
     
     class Config:
         from_attributes = True
-
         
-class ProgressNoteBase(BaseModel):
-    client_id: int
-    provider_id: int
-    appointment_id: Optional[int] = None
-    note_text: str
-    dsm5_code: Optional[str] = None
-    modifiers: Optional[str] = None
-    service_line: Optional[str] = None
-
-class ProgressNoteCreate(ProgressNoteBase):
-    pass
 
 class ProgressNoteRead(ProgressNoteBase):
     id: int
@@ -248,6 +269,15 @@ class InvoiceRead(InvoiceBase):
     created_at: datetime
     class Config:
         from_attributes = True
+        
+
+class InvoiceUpdate(BaseModel):
+    total_amount: Optional[float] = None
+    status: Optional[str] = None
+    description: Optional[str] = None
+    bill_to_name: Optional[str] = None
+    bill_to_relationship: Optional[str] = None
+    
 
 class ClaimBase(BaseModel):
     client_id: int
@@ -327,6 +357,12 @@ class ICD10CodeRead(ICD10CodeBase):
     id: int
     class Config:
         from_attributes = True
+        
+class ICD10CodeUpdate(BaseModel):
+    code: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    is_active: Optional[bool] = None
 
 class InsuranceInfoBase(BaseModel):
     client_id: int

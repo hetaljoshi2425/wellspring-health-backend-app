@@ -71,13 +71,17 @@ async def create_appointment(appointment_in: AppointmentCreate, db: AsyncSession
 @router.get("/", response_model=List[AppointmentRead])
 async def list_appointments(search: Optional[str] = Query(None, description="Search by client first name, last name, or email"  ), page: Optional[int] = Query(None, ge=1), page_size: Optional[int] = Query(None, ge=1, le=100), db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user),):
     
-    stmt = ( select(models.Appointment).join(models.Client).options(selectinload(models.Appointment.client),selectinload(models.Appointment.provider),))
+    stmt = ( select(models.Appointment).join(models.Client).options(
+        selectinload(models.Appointment.client), 
+        selectinload(models.Appointment.provider),
+        selectinload(models.Appointment.notes)
+        ))
 
     if search:
         like = f"%{search}%"
         stmt = stmt.where( or_( models.Client.first_name.ilike(like), models.Client.last_name.ilike(like), models.Client.email.ilike(like),))
 
-    stmt = stmt.order_by(models.Appointment.start_time.desc())
+    stmt = stmt.order_by(models.Appointment.start_time.asc())
 
     if page is not None and page_size is not None:
         offset = (page - 1) * page_size
@@ -213,7 +217,7 @@ async def filter_appointments(
     if conditions:
         stmt = stmt.where(and_(*conditions))
 
-    stmt = stmt.order_by(models.Appointment.start_time.desc())
+    stmt = stmt.order_by(models.Appointment.start_time.asc())
 
     result = await db.execute(stmt)
     appointments = result.scalars().all()

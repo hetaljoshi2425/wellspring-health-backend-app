@@ -13,7 +13,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse
 from fastapi import Depends, APIRouter, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -28,6 +28,7 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 @router.get("/users")
 async def list_users(
     role: Optional[str] = Query(None, description="Filter users by role"),
+    search: Optional[str] = Query(None, description="Search by user name or email"),
     page: Optional[int] = Query(None, ge=1),
     page_size: Optional[int] = Query(None, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -40,6 +41,10 @@ async def list_users(
         stmt = select(User)
         if role:
             stmt = stmt.where(User.role == role)
+            
+        if search:
+            search_term = f"%{search.strip()}%"
+            stmt = stmt.where(or_(User.user_name.ilike(search_term), User.email.ilike(search_term)))
         
         stmt = stmt.order_by(User.id.desc())
         
@@ -47,9 +52,7 @@ async def list_users(
             offset = (page - 1) * page_size
             stmt = stmt.offset(offset).limit(page_size)
         
-            
         result = await db.execute(stmt)
-        
         users = result.scalars().all()
         
         return {
@@ -135,6 +138,111 @@ async def create_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
                 "message": f"Unexpected error occurred {str(e)}.",
             },
         )
+
+
+@router.put("/users/{user_id}")
+async def update_user(
+    user_id: int,
+    payload: UserUpdateSchema,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    Update user details.
+    """
+    try:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+
+        if not user:
+            return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"success": False, "message": "User not found"})
+
+
+        update_data = payload.model_dump(exclude_unset=True)
+        
+        if "email" in update_data:
+            email = update_data["email"].lower().strip()
+
+            email_check = await db.execute(select(User).where(User.email == email, User.id != user_id))
+            existing_user = email_check.scalar_one_or_none()
+
+            if existing_user:
+                return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"success": False, "message": "Email already exists"})
+
+            update_data["email"] = email
+
+        # Update fields
+        for field, value in update_data.items():
+            setattr(user, field, value)
+
+        await db.commit()
+        await db.refresh(user)
+
+        return {
+            "success": True,
+            "message": "User updated successfully",
+            "data": {
+                "id": user.id,
+                "email": user.email,
+                "user_name": user.user_name,
+                "full_name": user.full_name,
+                "role": user.role,
+                "gender": user.gender,
+                "is_active": user.is_active,
+            },
+        }
+
+    except Exception as e:
+        print("[Debug-]:",str(e))
+        await db.rollback()
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "success": False,
+                "message": f"Unexpected error occurred: {str(e)}",
+            },
+        )
+
+
+@router.delete("/users/{user_id}/soft-delete")
+async def soft_delete_user(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"success": False, "message": "User not found"})
+
+    user.is_active = False
+    await db.commit()
+
+    return {
+        "success": True,
+        "message": "User deactivated successfully",
+    }
+    
+@router.delete("/users/{user_id}/hard-delete")
+async def hard_delete_user(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"success": False, "message": "User not found"})
+
+    await db.delete(user)
+    await db.commit()
+
+    return {
+        "success": True,
+        "message": "User Deleted successfully",
+    }
 
 
 @router.post("/login", )

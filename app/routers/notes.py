@@ -65,6 +65,7 @@ async def list_notes_for_client(client_id: int, page: int = Query(1, ge=1), page
         .where(models.ProgressNote.client_id == client_id)
         .options(
             selectinload(models.ProgressNote.appointment),
+            selectinload(models.ProgressNote.appointment).selectinload(models.Appointment.notes),
         )
         .order_by(models.ProgressNote.created_at.desc())
         .limit(page_size)
