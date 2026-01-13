@@ -59,5 +59,19 @@ async def create_telehealth_session(session_in: TelehealthSessionCreate, db: Asy
 
 @router.get("/sessions", response_model=List[TelehealthSessionRead])
 async def list_telehealth_sessions(db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
+    # result = await db.execute(select(models.TelehealthSession))
     result = await db.execute(select(models.TelehealthSession))
-    return result.scalars().all()
+    sessions = result.scalars().all()
+    return [
+        TelehealthSessionRead(
+            id=s.id,
+            appointment_id=s.appointment_id,
+            provider_id=s.provider_id,
+            client_id=s.client_id,
+            start_time=s.start_time,
+            end_time=s.end_time,
+            join_url=s.join_url,
+            status=str(s.status),
+        )
+        for s in sessions
+    ]

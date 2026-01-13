@@ -1,14 +1,33 @@
 from io import BytesIO
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from reportlab.pdfgen import canvas
 
+from pathlib import Path
+
 from ..database import get_db
 from .. import models
+from app.utils.auth_utils import get_current_user 
 
 router = APIRouter()
+
+MEDIA_ROOT = Path("uploads/superbills")
+MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
+
+CONSENT_DIR = Path("uploads/consents")
+CONSENT_DIR.mkdir(parents=True, exist_ok=True)
+
+INTAKE_DIR = Path("uploads/intake_packets")
+INTAKE_DIR.mkdir(parents=True, exist_ok=True)
+
+PAYMENT_CONSENT_DIR = Path("uploads/payment_consents")
+PAYMENT_CONSENT_DIR.mkdir(parents=True, exist_ok=True)
+
+TELEHEALTH_CONSENT_DIR = Path("uploads/telehealth_consents")
+TELEHEALTH_CONSENT_DIR.mkdir(parents=True, exist_ok=True)
+
 
 def _pdf_response(buffer: BytesIO, filename: str) -> StreamingResponse:
     buffer.seek(0)
@@ -19,7 +38,7 @@ def _pdf_response(buffer: BytesIO, filename: str) -> StreamingResponse:
     )
 
 @router.get("/superbill/{invoice_id}")
-async def generate_superbill(invoice_id: int, db: AsyncSession = Depends(get_db)):
+async def generate_superbill(invoice_id: int, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
     result = await db.execute(select(models.Invoice).where(models.Invoice.id == invoice_id))
     invoice = result.scalar_one_or_none()
     if not invoice:
@@ -36,218 +55,299 @@ async def generate_superbill(invoice_id: int, db: AsyncSession = Depends(get_db)
         .order_by(models.ProgressNote.created_at.desc())
     )
     latest_note = result.scalars().first()
+    
+    filename = f"superbill_{invoice.id}.pdf"
+    file_path = MEDIA_ROOT / filename
 
-    buffer = BytesIO()
-    p = canvas.Canvas(buffer)
-    p.setTitle("Superbill")
+    if not file_path.exists():
+        p = canvas.Canvas(str(file_path))
+        p.setTitle("Superbill")
 
-    y = 800
-    p.setFont("Helvetica-Bold", 14)
-    p.drawString(50, y, "Wellspring Family & Community Institute")
-    y -= 20
-    p.setFont("Helvetica", 12)
-    p.drawString(50, y, "Superbill")
-    y -= 30
-
-    p.drawString(50, y, f"Client: {client.first_name} {client.last_name}")
-    y -= 20
-    p.drawString(50, y, f"Invoice ID: {invoice.id}")
-    y -= 20
-    p.drawString(50, y, f"Date: {invoice.created_at.strftime('%Y-%m-%d')}")
-    y -= 20
-    p.drawString(50, y, f"Total Amount: ${invoice.total_amount:0.2f}")
-    y -= 30
-
-    if latest_note and latest_note.dsm5_code:
-        p.drawString(50, y, f"DSM/ICD Code: {latest_note.dsm5_code}")
+        y = 800
+        p.setFont("Helvetica-Bold", 14)
+        p.drawString(50, y, "Wellspring Family & Community Institute")
         y -= 20
-        p.drawString(50, y, "Diagnosis based on latest clinical documentation.")
+        p.setFont("Helvetica", 12)
+        p.drawString(50, y, "Superbill")
         y -= 30
 
-    p.drawString(50, y, "This superbill is provided for insurance reimbursement purposes.")
-    p.showPage()
-    p.save()
-    return _pdf_response(buffer, f"superbill_{invoice.id}.pdf")
+        p.drawString(50, y, f"Client: {client.first_name} {client.last_name}")
+        y -= 20
+        p.drawString(50, y, f"Invoice ID: {invoice.id}")
+        y -= 20
+        p.drawString(50, y, f"Date: {invoice.created_at.strftime('%Y-%m-%d')}")
+        y -= 20
+        p.drawString(50, y, f"Total Amount: ${invoice.total_amount:0.2f}")
+        y -= 30
+
+        if latest_note and latest_note.dsm5_code:
+            p.drawString(50, y, f"DSM/ICD Code: {latest_note.dsm5_code}")
+            y -= 20
+            p.drawString(50, y, "Diagnosis based on latest clinical documentation.")
+            y -= 30
+
+        p.drawString(50, y, "This superbill is provided for insurance reimbursement purposes.")
+        p.showPage()
+        p.save()
+    if not file_path.exists():
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"success": False, "message": "Superbill file not found"}
+        )
+
+    return FileResponse(
+        path=str(file_path),
+        filename=filename,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        },
+    )
+
 
 @router.get("/consent/{client_id}")
-async def generate_consent_form(client_id: int, db: AsyncSession = Depends(get_db)):
+async def generate_consent_form(client_id: int, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
     result = await db.execute(select(models.Client).where(models.Client.id == client_id))
     client = result.scalar_one_or_none()
     if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"success": False, "message": "Client not found"}
+        )
 
-    buffer = BytesIO()
-    p = canvas.Canvas(buffer)
-    p.setTitle("Consent for Treatment")
+    filename = f"consent_{client.id}.pdf"
+    file_path = CONSENT_DIR / filename
 
-    y = 800
-    p.setFont("Helvetica-Bold", 14)
-    p.drawString(50, y, "Wellspring Family & Community Institute")
-    y -= 20
-    p.setFont("Helvetica", 12)
-    p.drawString(50, y, "Consent for Treatment")
-    y -= 40
+    # buffer = BytesIO()
+    if not file_path.exists():
+        p = canvas.Canvas(str(file_path))
+        p.setTitle("Consent for Treatment")
 
-    p.drawString(50, y, f"Client Name: {client.first_name} {client.last_name}")
-    y -= 40
-
-    lines = [
-        "I hereby consent to receive mental and behavioral health services from",
-        "Wellspring Family & Community Institute and its affiliated providers.",
-        "",
-        "I understand that I may withdraw this consent in writing at any time,",
-        "except to the extent that action has already been taken in reliance on it.",
-        "",
-        "Client / Legal Guardian Signature: _____________________________",
-        "",
-        "Date: _____________________________",
-    ]
-    for line in lines:
-        p.drawString(50, y, line)
+        y = 800
+        p.setFont("Helvetica-Bold", 14)
+        p.drawString(50, y, "Wellspring Family & Community Institute")
         y -= 20
+        p.setFont("Helvetica", 12)
+        p.drawString(50, y, "Consent for Treatment")
+        y -= 40
 
-    p.showPage()
-    p.save()
-    return _pdf_response(buffer, f"consent_{client.id}.pdf")
+        p.drawString(50, y, f"Client Name: {client.first_name} {client.last_name}")
+        y -= 40
+
+        lines = [
+            "I hereby consent to receive mental and behavioral health services from",
+            "Wellspring Family & Community Institute and its affiliated providers.",
+            "",
+            "I understand that I may withdraw this consent in writing at any time,",
+            "except to the extent that action has already been taken in reliance on it.",
+            "",
+            "Client / Legal Guardian Signature: _____________________________",
+            "",
+            "Date: _____________________________",
+        ]
+        for line in lines:
+            p.drawString(50, y, line)
+            y -= 20
+
+        p.showPage()
+        p.save()
+        
+    if not file_path.exists():
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"success": False, "message": "Consent file not found"}
+        )
+
+    return FileResponse(
+        path=str(file_path),
+        filename=filename,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        },
+    )
 
 @router.get("/intake/{client_id}")
-async def generate_intake_packet(client_id: int, db: AsyncSession = Depends(get_db)):
+async def generate_intake_packet(client_id: int, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
     result = await db.execute(select(models.Client).where(models.Client.id == client_id))
     client = result.scalar_one_or_none()
     if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"success": False, "message": "Client not found"}
+        )
+        
+    filename = f"intake_{client.id}.pdf"
+    file_path = INTAKE_DIR / filename
 
-    buffer = BytesIO()
-    p = canvas.Canvas(buffer)
-    p.setTitle("Intake Packet")
+    if not file_path.exists():
+        p = canvas.Canvas(str(file_path))
+        p.setTitle("Intake Packet")
 
-    y = 800
-    p.setFont("Helvetica-Bold", 14)
-    p.drawString(50, y, "Wellspring Family & Community Institute")
-    y -= 20
-    p.setFont("Helvetica", 12)
-    p.drawString(50, y, "Client Intake Packet")
-    y -= 40
-
-    p.drawString(50, y, f"Client Name: {client.first_name} {client.last_name}")
-    y -= 20
-    if client.date_of_birth:
-        p.drawString(50, y, f"DOB: {client.date_of_birth.strftime('%Y-%m-%d')}")
+        y = 800
+        p.setFont("Helvetica-Bold", 14)
+        p.drawString(50, y, "Wellspring Family & Community Institute")
         y -= 20
-    if client.phone:
-        p.drawString(50, y, f"Phone: {client.phone}")
-        y -= 20
-    if client.email:
-        p.drawString(50, y, f"Email: {client.email}")
-        y -= 20
-    if client.address:
-        p.drawString(50, y, f"Address: {client.address}")
-        y -= 20
+        p.setFont("Helvetica", 12)
+        p.drawString(50, y, "Client Intake Packet")
+        y -= 40
 
-    y -= 40
-    p.drawString(50, y, "Presenting Problem (completed by clinician):")
-    y -= 60
-    p.line(50, y, 550, y)
-    y -= 40
-    p.line(50, y, 550, y)
+        p.drawString(50, y, f"Client Name: {client.first_name} {client.last_name}")
+        y -= 20
+        if client.date_of_birth:
+            p.drawString(50, y, f"DOB: {client.date_of_birth.strftime('%Y-%m-%d')}")
+            y -= 20
+        if client.phone:
+            p.drawString(50, y, f"Phone: {client.phone}")
+            y -= 20
+        if client.email:
+            p.drawString(50, y, f"Email: {client.email}")
+            y -= 20
+        if client.address:
+            p.drawString(50, y, f"Address: {client.address}")
+            y -= 20
 
-    y -= 60
-    p.drawString(50, y, "Insurance Information (completed by front desk/billing):")
-    y -= 60
-    p.line(50, y, 550, y)
-    y -= 40
-    p.line(50, y, 550, y)
+        y -= 40
+        p.drawString(50, y, "Presenting Problem (completed by clinician):")
+        y -= 60
+        p.line(50, y, 550, y)
+        y -= 40
+        p.line(50, y, 550, y)
 
-    p.showPage()
-    p.save()
-    return _pdf_response(buffer, f"intake_{client.id}.pdf")
+        y -= 60
+        p.drawString(50, y, "Insurance Information (completed by front desk/billing):")
+        y -= 60
+        p.line(50, y, 550, y)
+        y -= 40
+        p.line(50, y, 550, y)
+
+        p.showPage()
+        p.save()
+        
+    return FileResponse(
+        path=str(file_path),
+        filename=filename,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        },
+    )
+
 
 @router.get("/payment-consent/{client_id}")
-async def generate_payment_consent(client_id: int, db: AsyncSession = Depends(get_db)):
+async def generate_payment_consent(client_id: int, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
     result = await db.execute(select(models.Client).where(models.Client.id == client_id))
     client = result.scalar_one_or_none()
     if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"success": False, "message": "Client not found"}
+        )
 
-    buffer = BytesIO()
-    p = canvas.Canvas(buffer)
-    p.setTitle("Credit/Debit Card Payment Consent")
+    filename = f"payment_consent_{client.id}.pdf"
+    file_path = PAYMENT_CONSENT_DIR / filename
 
-    y = 800
-    p.setFont("Helvetica-Bold", 14)
-    p.drawString(50, y, "Wellspring Family & Community Institute")
-    y -= 20
-    p.setFont("Helvetica", 12)
-    p.drawString(50, y, "Credit / Debit Card Payment Consent")
-    y -= 40
+    if not file_path.exists():
+        p = canvas.Canvas(str(file_path))
+        p.setTitle("Credit/Debit Card Payment Consent")
 
-    p.drawString(50, y, f"Client Name: {client.first_name} {client.last_name}")
-    y -= 40
-
-    lines = [
-        "I authorize Wellspring Family & Community Institute to charge my credit/debit card",
-        "for services rendered, including copayments, coinsurance, deductibles, and any",
-        "fees not covered by my insurance plan.",
-        "",
-        "I understand that this authorization will remain in effect until I cancel it in writing.",
-        "",
-        "Type of Card: ____________________________",
-        "Name on Card: ____________________________",
-        "Last 4 Digits of Card: ____  Expiration: ____ / ____",
-        "",
-        "Client / Cardholder Signature: _____________________________",
-        "",
-        "Date: _____________________________",
-    ]
-    for line in lines:
-        p.drawString(50, y, line)
+        y = 800
+        p.setFont("Helvetica-Bold", 14)
+        p.drawString(50, y, "Wellspring Family & Community Institute")
         y -= 20
+        p.setFont("Helvetica", 12)
+        p.drawString(50, y, "Credit / Debit Card Payment Consent")
+        y -= 40
 
-    p.showPage()
-    p.save()
-    return _pdf_response(buffer, f"payment_consent_{client.id}.pdf")
+        p.drawString(50, y, f"Client Name: {client.first_name} {client.last_name}")
+        y -= 40
+
+        lines = [
+            "I authorize Wellspring Family & Community Institute to charge my credit/debit card",
+            "for services rendered, including copayments, coinsurance, deductibles, and any",
+            "fees not covered by my insurance plan.",
+            "",
+            "I understand that this authorization will remain in effect until I cancel it in writing.",
+            "",
+            "Type of Card: ____________________________",
+            "Name on Card: ____________________________",
+            "Last 4 Digits of Card: ____  Expiration: ____ / ____",
+            "",
+            "Client / Cardholder Signature: _____________________________",
+            "",
+            "Date: _____________________________",
+        ]
+        for line in lines:
+            p.drawString(50, y, line)
+            y -= 20
+
+        p.showPage()
+        p.save()
+        
+    return FileResponse(
+        path=str(file_path),
+        filename=filename,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        },
+    )
 
 @router.get("/telehealth-consent/{client_id}")
-async def generate_telehealth_consent(client_id: int, db: AsyncSession = Depends(get_db)):
+async def generate_telehealth_consent(client_id: int, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
     result = await db.execute(select(models.Client).where(models.Client.id == client_id))
     client = result.scalar_one_or_none()
     if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"success": False, "message": "Client not found"}
+        )
+        
 
-    buffer = BytesIO()
-    p = canvas.Canvas(buffer)
-    p.setTitle("Telehealth Treatment Consent")
+    filename = f"telehealth_consent_{client.id}.pdf"
+    file_path = TELEHEALTH_CONSENT_DIR / filename
+        
+    if not file_path.exists():
+        p = canvas.Canvas(str(file_path))
+        p.setTitle("Telehealth Treatment Consent")
 
-    y = 800
-    p.setFont("Helvetica-Bold", 14)
-    p.drawString(50, y, "Wellspring Family & Community Institute")
-    y -= 20
-    p.setFont("Helvetica", 12)
-    p.drawString(50, y, "Telehealth Treatment Consent")
-    y -= 40
-
-    p.drawString(50, y, f"Client Name: {client.first_name} {client.last_name}")
-    y -= 40
-
-    lines = [
-        "I understand that telehealth services involve the use of electronic",
-        "communications to enable mental health providers at a different location",
-        "to provide services to me.",
-        "",
-        "I understand the potential risks and benefits of telehealth and the",
-        "alternatives to receiving services via telehealth.",
-        "",
-        "I consent to receive mental and behavioral health services via telehealth",
-        "from Wellspring Family & Community Institute.",
-        "",
-        "Client / Legal Guardian Signature: _____________________________",
-        "",
-        "Date: _____________________________",
-    ]
-    for line in lines:
-        p.drawString(50, y, line)
+        y = 800
+        p.setFont("Helvetica-Bold", 14)
+        p.drawString(50, y, "Wellspring Family & Community Institute")
         y -= 20
+        p.setFont("Helvetica", 12)
+        p.drawString(50, y, "Telehealth Treatment Consent")
+        y -= 40
 
-    p.showPage()
-    p.save()
-    return _pdf_response(buffer, f"telehealth_consent_{client.id}.pdf")
+        p.drawString(50, y, f"Client Name: {client.first_name} {client.last_name}")
+        y -= 40
+
+        lines = [
+            "I understand that telehealth services involve the use of electronic",
+            "communications to enable mental health providers at a different location",
+            "to provide services to me.",
+            "",
+            "I understand the potential risks and benefits of telehealth and the",
+            "alternatives to receiving services via telehealth.",
+            "",
+            "I consent to receive mental and behavioral health services via telehealth",
+            "from Wellspring Family & Community Institute.",
+            "",
+            "Client / Legal Guardian Signature: _____________________________",
+            "",
+            "Date: _____________________________",
+        ]
+        for line in lines:
+            p.drawString(50, y, line)
+            y -= 20
+
+        p.showPage()
+        p.save()
+    return FileResponse(
+        path=str(file_path),
+        filename=filename,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        },
+    )
