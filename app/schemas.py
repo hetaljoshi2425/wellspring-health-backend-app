@@ -301,6 +301,7 @@ class TelehealthSessionBase(BaseModel):
     provider_id: int
     client_id: int
     start_time: datetime
+    end_time: Optional[datetime] = None
     status: str = "scheduled"
 
 class TelehealthSessionCreate(TelehealthSessionBase):

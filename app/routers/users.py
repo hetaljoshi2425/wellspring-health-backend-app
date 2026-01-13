@@ -68,7 +68,6 @@ async def list_users(
                     "user_name": user.user_name,
                     "role": user.role,
                     "gender": user.gender,
-                    "created_at": getattr(user, "created_at", None)
                 }
                 for user in users
             ]

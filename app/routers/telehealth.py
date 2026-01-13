@@ -23,7 +23,14 @@ async def create_telehealth_session(session_in: TelehealthSessionCreate, db: Asy
             if start_time.tzinfo is not None:
                 start_time = start_time.astimezone(timezone.utc).replace(tzinfo=None)
         else:
-            start_time = datetime.now()
+            start_time = datetime.utcnow()
+        
+        end_time = None
+        if session_in.end_time:
+            end_time = session_in.end_time
+            if end_time.tzinfo is not None:
+                end_time = end_time.astimezone(timezone.utc).replace(tzinfo=None)
+
     except Exception as e:
         return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, content={ "success": False, "message": "Invalid start_time format"})
     
@@ -44,7 +51,8 @@ async def create_telehealth_session(session_in: TelehealthSessionCreate, db: Asy
         appointment_id=session_in.appointment_id,
         provider_id=session_in.provider_id,
         client_id=session_in.client_id,
-        start_time=session_in.start_time,
+        start_time=start_time,
+        end_time=end_time,
         status=session_in.status,
         join_url=join_url,
     )
