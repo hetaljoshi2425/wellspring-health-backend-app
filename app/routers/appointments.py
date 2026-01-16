@@ -184,12 +184,16 @@ async def delete_appointment(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"success": False, "message": "Completed appointments cannot be deleted",
         })
-    await db.delete(appointment)
-    await db.commit()
-    return {
-            "success": True,
-            "message": "Appointment deleted successfully",
-        }
+    try:
+        await db.delete(appointment)
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={"success": False, "message": "Appointment has active telehealth sessions"}
+        )
+    return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={ "success": True, "message": "Appointment deleted successfully"})
 
 @router.get("/filter", response_model=List[AppointmentRead])
 async def filter_appointments(

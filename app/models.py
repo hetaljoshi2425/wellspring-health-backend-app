@@ -91,7 +91,12 @@ class Appointment(Base):
     client = relationship("Client", back_populates="appointments", lazy="selectin",)
     provider = relationship("User", back_populates="appointments", lazy="selectin",)
     notes = relationship("ProgressNote", back_populates="appointment", lazy="selectin", cascade="all, delete-orphan",)
-
+    telehealth_sessions = relationship(
+        "TelehealthSession",
+        back_populates="appointment",
+        cascade="all, delete-orphan",
+        passive_deletes=True
+    )
 class ProgressNote(Base):
     __tablename__ = "progress_notes"
 
@@ -152,13 +157,15 @@ class TelehealthSession(Base):
     __tablename__ = "telehealth_sessions"
 
     id = Column(Integer, primary_key=True, index=True)
-    appointment_id = Column(Integer, ForeignKey("appointments.id"), nullable=False)
+    appointment_id = Column(Integer, ForeignKey("appointments.id", ondelete="CASCADE"), nullable=False)
     provider_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
     join_url = Column(String, nullable=False)
     start_time = Column(DateTime, nullable=False)
     end_time = Column(DateTime, nullable=True)
     status = Column(String, default="scheduled")  # scheduled, live, completed
+    
+    appointment = relationship("Appointment", back_populates="telehealth_sessions")
 
 class Medication(Base):
     __tablename__ = "medications"
