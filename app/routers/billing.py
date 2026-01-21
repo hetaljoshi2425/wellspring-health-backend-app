@@ -89,14 +89,7 @@ async def update_invoice( invoice_id: int, invoice_in: InvoiceUpdate, db: AsyncS
     if invoice_in.status is not None:
         if invoice_in.status not in allowed_statuses:
             return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={ "success": False, "message": "Invalid invoice status"})
-
-    client_exists = await db.execute(select(models.Client.id).where(models.Client.id == invoice_in.client_id))
-    if not client_exists.scalar_one_or_none():
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={"success": False, "message": "Invalid client_id"}
-        )
-        
+       
     update_data = invoice_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(invoice, field, value)
