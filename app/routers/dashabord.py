@@ -14,7 +14,7 @@ async def dashboard_counts(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     recent_since = now - timedelta(days=7)
     # Count clinics
     clinics_count = await db.scalar(
